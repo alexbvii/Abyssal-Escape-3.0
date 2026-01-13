@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Abyssal Escape</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #020202;
+            color: #e0e0e0;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+        .vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-shadow: inset 0 0 150px rgba(0,0,0,0.9);
+            pointer-events: none;
+            z-index: 10;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: env(safe-area-inset-top, 20px);
+            left: env(safe-area-inset-left, 20px);
+            pointer-events: none;
+            text-shadow: 0 0 10px #f00;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        #death-screen, #win-screen, #start-screen {
+            display: flex;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.98);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+            backdrop-filter: blur(12px);
+        }
+        .hidden { display: none !important; }
+        .glitch {
+            animation: glitch 0.2s linear infinite;
+        }
+        @keyframes glitch {
+            0% { transform: translate(0); color: #800; text-shadow: 2px 0 #f00; }
+            25% { transform: translate(-2px, 2px); color: #400; text-shadow: -2px 0 #f00; }
+            50% { transform: translate(-2px, -2px); color: #200; }
+            75% { transform: translate(2px, 2px); color: #000; }
+            100% { transform: translate(0); color: #800; }
+        }
+
+        /* Mobile Controls */
+        #joystick-container {
+            position: fixed;
+            bottom: max(40px, env(safe-area-inset-bottom));
+            left: max(40px, env(safe-area-inset-left));
+            width: 130px;
+            height: 130px;
+            background: radial-gradient(circle, rgba(255, 0, 0, 0.08) 0%, transparent 70%);
+            border: 2px solid rgba(255, 0, 0, 0.15);
+            border-radius: 50%;
+            z-index: 50;
+            display: none;
+            touch-action: none;
+            align-items: center;
+            justify-content: center;
+        }
+        #joystick-knob {
+            width: 54px;
+            height: 54px;
+            background: radial-gradient(circle, rgba(150, 0, 0, 0.6) 0%, rgba(50, 0, 0, 0.8) 100%);
+            border: 2px solid rgba(255, 0, 0, 0.4);
+            border-radius: 50%;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.2);
+            pointer-events: none;
+            transition: transform 0.05s ease-out;
+        }
+        .control-btn {
+            position: fixed;
+            width: 80px;
+            height: 80px;
+            background: rgba(20, 0, 0, 0.6);
+            border: 1px solid rgba(255, 0, 0, 0.3);
+            border-radius: 50%;
+            z-index: 50;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: #800;
+            font-weight: bold;
+            font-size: 11px;
+            text-transform: uppercase;
+            touch-action: none;
+            backdrop-filter: blur(4px);
+        }
+        #sprint-btn { 
+            bottom: calc(max(40px, env(safe-area-inset-bottom)) + 100px); 
+            right: max(30px, env(safe-area-inset-right)); 
+        }
+        #weapon-btn { 
+            bottom: max(40px, env(safe-area-inset-bottom)); 
+            right: max(30px, env(safe-area-inset-right)); 
+            border-color: rgba(0, 255, 255, 0.2); 
+            color: #066; 
+        }
+        
+        .control-btn.active {
+            background: rgba(255, 0, 0, 0.4);
+            color: #f00;
+            border-color: #f00;
+            transform: scale(0.92);
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.6);
+        }
+        #weapon-btn.has-charge {
+            background: rgba(0, 255, 255, 0.1);
+            color: #0ff;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+            border-color: #0ff;
+        }
+        #weapon-btn.active {
+            background: rgba(0, 255, 255, 0.4);
+            transform: scale(0.92);
+        }
+
+        @media (pointer: coarse) {
+            #joystick-container, .control-btn {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1 class="text-4xl md:text-7xl font-black mb-4 text-red-900 tracking-tighter uppercase italic glitch">ABYSSAL ESCAPE</h1>
+        <p class="mb-8 text-gray-700 font-mono tracking-widest text-[10px] md:text-sm uppercase px-4 text-center">MUST SPRINT TO BYPASS THE HORRORS</p>
+        <button id="start-btn" class="px-10 py-4 border border-red-950 hover:border-red-600 hover:bg-red-950/20 transition-all text-red-800 font-bold rounded uppercase tracking-[0.3em]">Enter the Void</button>
+        <div class="mt-8 text-[9px] text-gray-600 uppercase tracking-widest opacity-50 hidden md:block">WASD: MOVE | SHIFT: RUN | SPACE: AMULET</div>
+    </div>
+
+    <div id="death-screen" class="hidden">
+        <h2 class="text-5xl md:text-8xl font-black text-red-900 glitch">CONSUMED</h2>
+        <p id="death-reason" class="text-red-700 text-xs tracking-widest uppercase mt-4">WITHOUT SPEED, THERE IS NO ESCAPE</p>
+        <button id="retry-btn" class="mt-12 px-10 py-3 border border-red-950 text-red-900 hover:text-red-600 transition-colors uppercase tracking-[0.4em] font-bold">Reawaken</button>
+    </div>
+
+    <div id="win-screen" class="hidden">
+        <h2 class="text-5xl md:text-7xl font-bold text-red-600">DEEPER STILL</h2>
+        <button id="next-btn" class="mt-12 px-10 py-3 border border-red-800 text-red-600 hover:bg-red-950 transition-colors uppercase tracking-[0.4em] font-bold">Descend</button>
+    </div>
+
+    <div class="ui-overlay">
+        <div id="level-indicator" class="text-sm md:text-xl font-bold text-red-950 opacity-80 uppercase tracking-tighter">DEPTH: 1</div>
+        <div id="key-tracker" class="text-red-700 font-bold tracking-widest text-[10px] md:text-xs">REPLICAS: 0/3</div>
+        <div id="weapon-tracker" class="text-cyan-900 font-bold tracking-widest text-[9px] md:text-[10px] uppercase">AMULETS: 0</div>
+        <div id="stamina-bar" class="w-24 md:w-48 h-1 bg-gray-950 mt-2 overflow-hidden border border-red-950/20">
+            <div id="stamina-fill" class="h-full bg-red-900 shadow-[0_0_8px_rgba(255,0,0,0.8)] transition-all duration-150"></div>
+        </div>
+    </div>
+
+    <div id="joystick-container">
+        <div id="joystick-knob"></div>
+    </div>
+    <div id="sprint-btn" class="control-btn">RUN</div>
+    <div id="weapon-btn" class="control-btn">AMULET</div>
+
+    <div class="vignette"></div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const deathScreen = document.getElementById('death-screen');
+        const winScreen = document.getElementById('win-screen');
+        const staminaFill = document.getElementById('stamina-fill');
+        const levelIndicator = document.getElementById('level-indicator');
+        const keyTracker = document.getElementById('key-tracker');
+        const weaponTracker = document.getElementById('weapon-tracker');
+        const joyContainer = document.getElementById('joystick-container');
+        const joyKnob = document.getElementById('joystick-knob');
+        const sprintBtn = document.getElementById('sprint-btn');
+        const weaponBtn = document.getElementById('weapon-btn');
+
+        const TILE_SIZE = 48;
+        let ROWS = 35; 
+        let COLS = 35;
+        let level = 1;
+
+        let maze = [];
+        let bloodSplats = [];
+        let fogParticles = [];
+        let player = { 
+            x: 1.5, 
+            y: 1.5, 
+            radius: 0.15, 
+            stamina: 100, 
+            keysCollected: 0,
+            amulets: 0,
+            animFrame: 0,
+            isMoving: false,
+            isSprinting: false,
+            facing: 1,
+            shake: 0,
+            burstEffect: 0,
+            exposure: 0 
+        };
+        let enemies = [];
+        let keys = []; 
+        let weapons = [];
+        let exit = { x: 0, y: 0 };
+        let inputKeys = {};
+        let gameActive = false;
+        let animationId = null;
+        let flickerVal = 1;
+
+        let joystick = { active: false, moveX: 0, moveY: 0 };
+        let isSprintToggled = false;
+
+        function generateMaze() {
+            ROWS = 23 + (level * 2);
+            COLS = 23 + (level * 2);
+            if (ROWS % 2 === 0) ROWS++;
+            if (COLS % 2 === 0) COLS++;
+
+            maze = Array(ROWS).fill().map(() => Array(COLS).fill(1));
+            bloodSplats = [];
+            fogParticles = [];
+            
+            function walk(x, y) {
+                maze[y][x] = 0;
+                const directions = [[0, -2], [0, 2], [-2, 0], [2, 0]].sort(() => Math.random() - 0.5);
+                for (let [dx, dy] of directions) {
+                    let nx = x + dx, ny = y + dy;
+                    if (nx > 0 && nx < COLS - 1 && ny > 0 && ny < ROWS - 1 && maze[ny][nx] === 1) {
+                        maze[y + dy / 2][x + dx / 2] = 0;
+                        walk(nx, ny);
+                    }
+                }
+            }
+            walk(1, 1);
+
+            for(let i=0; i<ROWS * COLS * 0.12; i++) {
+                let rx = Math.floor(Math.random() * COLS);
+                let ry = Math.floor(Math.random() * ROWS);
+                if(maze[ry][rx] === 0) {
+                    bloodSplats.push({
+                        x: rx + Math.random(),
+                        y: ry + Math.random(),
+                        size: Math.random() * 20 + 5,
+                        opacity: Math.random() * 0.25 + 0.1,
+                        color: Math.random() > 0.3 ? '#300' : '#100'
+                    });
+                }
+            }
+
+            exit.x = COLS - 2;
+            exit.y = ROWS - 2;
+            maze[exit.y][exit.x] = 0;
+
+            let possibleSpots = [];
+            for(let r=1; r<ROWS-1; r++) {
+                for(let c=1; c<COLS-1; c++) {
+                    if(maze[r][c] === 0 && (c > 6 || r > 6)) possibleSpots.push({x: c, y: r});
+                }
+            }
+            possibleSpots.sort(() => Math.random() - 0.5);
+
+            keys = [];
+            for(let i=0; i<3; i++) {
+                if(possibleSpots[i]) keys.push({...possibleSpots[i], collected: false, rot: Math.random() * Math.PI});
+            }
+
+            weapons = [];
+            for(let i=3; i<6; i++) {
+                if(possibleSpots[i]) weapons.push({...possibleSpots[i], collected: false, rot: Math.random() * Math.PI});
+            }
+
+            enemies = [];
+            const numEnemies = 2 + Math.floor(level * 1.25);
+            for(let i=0; i<numEnemies; i++) {
+                let ex = Math.floor(Math.random() * (COLS - 4)) + 2;
+                let ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                while(maze[ey][ex] !== 0 || (ex < 7 && ey < 7)) {
+                    ex = Math.floor(Math.random() * (COLS - 4)) + 2;
+                    ey = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                }
+                enemies.push({
+                    x: ex + 0.5, y: ey + 0.5,
+                    radius: 0.2, 
+                    speed: 0.025 + (level * 0.003),
+                    detectionRadius: 7, 
+                    loseRadius: 15,
+                    killRadius: 1.3, // ZONE OF DEATH
+                    isChasing: false,
+                    isStunned: 0,
+                    path: [],
+                    lastPathUpdate: 0,
+                    id: i,
+                    pulse: 0
+                });
+            }
+
+            for(let i=0; i<40; i++) {
+                fogParticles.push({
+                    x: Math.random() * COLS,
+                    y: Math.random() * ROWS,
+                    s: Math.random() * 1.2 + 0.8,
+                    vx: (Math.random() - 0.5) * 0.006,
+                    vy: (Math.random() - 0.5) * 0.006
+                });
+            }
+        }
+
+        function getPath(startX, startY, targetX, targetY) {
+            const start = { x: Math.floor(startX), y: Math.floor(startY) };
+            const end = { x: Math.floor(targetX), y: Math.floor(targetY) };
+            if (start.x === end.x && start.y === end.y) return [];
+            const queue = [start];
+            const visited = new Set([`${start.x},${start.y}`]);
+            const parent = {};
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+                if (current.x === end.x && current.y === end.y) {
+                    const path = [];
+                    let curr = `${end.x},${end.y}`;
+                    while (curr !== `${start.x},${start.y}`) {
+                        const [px, py] = curr.split(',').map(Number);
+                        path.unshift({ x: px + 0.5, y: py + 0.5 });
+                        curr = parent[curr];
+                    }
+                    return path;
+                }
+                const neighbors = [{ x: current.x, y: current.y - 1 }, { x: current.x, y: current.y + 1 }, { x: current.x - 1, y: current.y }, { x: current.x + 1, y: current.y }];
+                for (const next of neighbors) {
+                    const key = `${next.x},${next.y}`;
+                    if (next.x >= 0 && next.x < COLS && next.y >= 0 && next.y < ROWS && maze[next.y][next.x] === 0 && !visited.has(key)) {
+                        visited.add(key);
+                        parent[key] = `${current.x},${current.y}`;
+                        queue.push(next);
+                    }
+                }
+            }
+            return [];
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        window.addEventListener('keydown', e => {
+            inputKeys[e.code] = true;
+            if(e.code === 'Space') useAmulet();
+        });
+        window.addEventListener('keyup', e => inputKeys[e.code] = false);
+
+        // Mobile Controls logic
+        joyContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = joyContainer.getBoundingClientRect();
+            joystick.active = true;
+            joystick.centerX = rect.left + rect.width / 2;
+            joystick.centerY = rect.top + rect.height / 2;
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!joystick.active) return;
+            const touch = Array.from(e.touches).find(t => t.target === joyContainer || joyContainer.contains(t.target)) || e.touches[0];
+            let dx = touch.clientX - joystick.centerX;
+            let dy = touch.clientY - joystick.centerY;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            const maxDist = 55;
+            if (dist > maxDist) {
+                dx = (dx / dist) * maxDist;
+                dy = (dy / dist) * maxDist;
+                dist = maxDist;
+            }
+            joystick.moveX = dx / maxDist;
+            joystick.moveY = dy / maxDist;
+            joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+        }, { passive: false });
+
+        const endTouch = (e) => {
+            joystick.active = false;
+            joystick.moveX = 0; joystick.moveY = 0;
+            joyKnob.style.transform = `translate(0, 0)`;
+        };
+        window.addEventListener('touchend', endTouch);
+        window.addEventListener('touchcancel', endTouch);
+
+        sprintBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isSprintToggled = !isSprintToggled;
+            sprintBtn.classList.toggle('active', isSprintToggled);
+        });
+
+        weaponBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            weaponBtn.classList.add('active');
+            useAmulet();
+        });
+        weaponBtn.addEventListener('touchend', () => weaponBtn.classList.remove('active'));
+
+        function useAmulet() {
+            if (!gameActive || player.amulets <= 0) return;
+            player.amulets--;
+            player.burstEffect = 1.0;
+            player.shake = 12;
+            updateUI();
+            enemies.forEach(en => {
+                const dist = Math.sqrt((player.x - en.x)**2 + (player.y - en.y)**2);
+                if (dist < 7) {
+                    en.isStunned = 180;
+                    en.isChasing = false;
+                    en.path = [];
+                    const angle = Math.atan2(en.y - player.y, en.x - player.x);
+                    const pushDist = 2.0;
+                    let nx = en.x + Math.cos(angle) * pushDist;
+                    let ny = en.y + Math.sin(angle) * pushDist;
+                    if (!isWall(nx, ny)) { en.x = nx; en.y = ny; }
+                }
+            });
+        }
+
+        function updateUI() {
+            levelIndicator.innerText = `DEPTH: ${level}`;
+            keyTracker.innerText = `REPLICAS: ${player.keysCollected}/3`;
+            weaponTracker.innerText = `AMULETS: ${player.amulets}`;
+            weaponBtn.classList.toggle('has-charge', player.amulets > 0);
+        }
+
+        function initGame() {
+            if (animationId) cancelAnimationFrame(animationId);
+            player.x = 1.5; player.y = 1.5; player.stamina = 100;
+            player.keysCollected = 0; player.amulets = 0; player.shake = 0;
+            player.burstEffect = 0; player.exposure = 0;
+            isSprintToggled = false; 
+            sprintBtn.classList.remove('active');
+            generateMaze();
+            gameActive = true;
+            startScreen.classList.add('hidden'); deathScreen.classList.add('hidden'); winScreen.classList.add('hidden');
+            updateUI();
+            gameLoop();
+        }
+
+        const isWall = (x, y) => {
+            const rx = Math.floor(x);
+            const ry = Math.floor(y);
+            if (rx < 0 || rx >= COLS || ry < 0 || ry >= ROWS) return true;
+            return maze[ry][rx] === 1;
+        };
+
+        function checkCollision(x, y, radius) {
+            const r = (radius || player.radius) * 0.85; 
+            const steps = 8;
+            for (let i = 0; i < steps; i++) {
+                const angle = (i / steps) * Math.PI * 2;
+                if (isWall(x + Math.cos(angle) * r, y + Math.sin(angle) * r)) return true;
+            }
+            return false;
+        }
+
+        function moveEnemies() {
+            if (!gameActive) return;
+            let nearbyChase = false;
+            let touchingKillZone = false;
+            const now = Date.now();
+            
+            enemies.forEach(en => {
+                if (en.isStunned > 0) {
+                    en.isStunned--;
+                    return;
+                }
+
+                let dx = player.x - en.x;
+                let dy = player.y - en.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < en.detectionRadius) en.isChasing = true;
+                else if (en.isChasing && dist > en.loseRadius) {
+                    en.isChasing = false;
+                    en.path = [];
+                }
+
+                if (en.isChasing) {
+                    if (dist < 4) nearbyChase = true;
+                    
+                    // LETHAL MECHANIC: Touching the monster without sprinting is death
+                    if (dist < en.killRadius) {
+                        if (!player.isSprinting) touchingKillZone = true;
+                    }
+
+                    if (now - en.lastPathUpdate > 600) {
+                        en.path = getPath(en.x, en.y, player.x, player.y);
+                        en.lastPathUpdate = now;
+                    }
+
+                    let targetX = player.x, targetY = player.y;
+                    if (en.path.length > 0) {
+                        const node = en.path[0];
+                        const dNode = Math.sqrt((node.x - en.x)**2 + (node.y - en.y)**2);
+                        if (dNode < 0.15) {
+                            en.path.shift();
+                            if (en.path.length > 0) { targetX = en.path[0].x; targetY = en.path[0].y; }
+                        } else { targetX = node.x; targetY = node.y; }
+                    }
+
+                    const angle = Math.atan2(targetY - en.y, targetX - en.x);
+                    let vx = Math.cos(angle) * en.speed, vy = Math.sin(angle) * en.speed;
+
+                    enemies.forEach(other => {
+                        if (other.id !== en.id) {
+                            const odx = en.x - other.x, ody = en.y - other.y;
+                            const odist = Math.sqrt(odx * odx + ody * ody);
+                            if (odist < 0.6) { vx += (odx / odist) * 0.015; vy += (ody / odist) * 0.015; }
+                        }
+                    });
+
+                    if (!checkCollision(en.x + vx, en.y + vy, en.radius)) { en.x += vx; en.y += vy; }
+                    else {
+                        if (!checkCollision(en.x + vx, en.y, en.radius)) en.x += vx;
+                        else if (!checkCollision(en.x, en.y + vy, en.radius)) en.y += vy;
+                    }
+                    en.pulse = (en.pulse + 0.1) % (Math.PI * 2);
+                } else {
+                    en.x += (Math.random() - 0.5) * 0.008; en.y += (Math.random() - 0.5) * 0.008;
+                    if (isWall(en.x, en.y)) { en.x -= (Math.random() - 0.5) * 0.06; en.y -= (Math.random() - 0.5) * 0.06; }
+                }
+            });
+
+            if (touchingKillZone) {
+                player.exposure += 3.0; 
+                player.shake = Math.min(player.shake + 3.0, 20);
+                if (player.exposure > 15) endGame(false);
+            } else {
+                player.exposure = Math.max(0, player.exposure - 0.7);
+                if (nearbyChase) player.shake = Math.min(player.shake + 0.3, 6);
+                else player.shake *= 0.88;
+            }
+        }
+
+        function update() {
+            if (!gameActive) return;
+            let moveX = 0, moveY = 0;
+            
+            // Sprint check: keyboard Shift OR mobile toggle
+            player.isSprinting = (inputKeys['ShiftLeft'] || isSprintToggled) && player.stamina > 0;
+            
+            // Auto-disable mobile toggle if stamina runs out
+            if (isSprintToggled && player.stamina <= 0) {
+                isSprintToggled = false;
+                sprintBtn.classList.remove('active');
+            }
+
+            let speed = player.isSprinting ? 0.15 : 0.08;
+
+            if (player.isSprinting) player.stamina -= 1.1; // Higher drain
+            else player.stamina = Math.min(100, player.stamina + 0.55);
+
+            if (inputKeys['KeyW'] || inputKeys['ArrowUp']) moveY -= speed;
+            if (inputKeys['KeyS'] || inputKeys['ArrowDown']) moveY += speed;
+            if (inputKeys['KeyA'] || inputKeys['ArrowLeft']) moveX -= speed;
+            if (inputKeys['KeyD'] || inputKeys['ArrowRight']) moveX += speed;
+
+            if (joystick.active) { moveX = joystick.moveX * speed; moveY = joystick.moveY * speed; }
+
+            staminaFill.style.width = player.stamina + '%';
+            player.isMoving = Math.abs(moveX) > 0.001 || Math.abs(moveY) > 0.001;
+            if (moveX < 0) player.facing = -1;
+            if (moveX > 0) player.facing = 1;
+
+            if (player.isMoving) player.animFrame += player.isSprinting ? 0.32 : 0.18;
+            else player.animFrame += 0.02;
+
+            if (player.isMoving) {
+                let nextX = player.x + moveX;
+                let nextY = player.y + moveY;
+                if (!checkCollision(nextX, nextY)) {
+                    player.x = nextX; player.y = nextY;
+                } else {
+                    if (!checkCollision(nextX, player.y)) player.x = nextX;
+                    else if (!checkCollision(player.x, nextY)) player.y = nextY;
+                }
+            }
+
+            keys.forEach(k => {
+                if(!k.collected && Math.sqrt((player.x - (k.x+0.5))**2 + (player.y - (k.y+0.5))**2) < 0.6) {
+                    k.collected = true; player.keysCollected++; updateUI();
+                }
+            });
+            weapons.forEach(w => {
+                if(!w.collected && Math.sqrt((player.x - (w.x+0.5))**2 + (player.y - (w.y+0.5))**2) < 0.6) {
+                    w.collected = true; player.amulets++; updateUI();
+                }
+            });
+
+            if (player.keysCollected >= 3 && Math.sqrt((player.x - (exit.x+0.5))**2 + (player.y - (exit.y+0.5))**2) < 0.7) endGame(true);
+            moveEnemies();
+            
+            fogParticles.forEach(p => {
+                p.x += p.vx; p.y += p.vy;
+                if (p.x < 0) p.x = COLS; if (p.x > COLS) p.x = 0;
+                if (p.y < 0) p.y = ROWS; if (p.y > ROWS) p.y = 0;
+            });
+            
+            if (Math.random() > 0.99) flickerVal = Math.random() * 0.6;
+            else flickerVal = Math.min(1, flickerVal + 0.025);
+            
+            if (player.burstEffect > 0) player.burstEffect -= 0.025;
+        }
+
+        function draw() {
+            if (!maze.length) return;
+            let sx = (Math.random() - 0.5) * player.shake;
+            let sy = (Math.random() - 0.5) * player.shake;
+            ctx.fillStyle = '#010101';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const camX = player.x * TILE_SIZE - canvas.width / 2 + sx;
+            const camY = player.y * TILE_SIZE - canvas.height / 2 + sy;
+            ctx.save();
+            ctx.translate(-camX, -camY);
+
+            const sCol = Math.max(0, Math.floor(camX/TILE_SIZE)-1), eCol = Math.min(COLS, Math.ceil((camX+canvas.width)/TILE_SIZE)+1);
+            const sRow = Math.max(0, Math.floor(camY/TILE_SIZE)-1), eRow = Math.min(ROWS, Math.ceil((camY+canvas.height)/TILE_SIZE)+1);
+
+            for(let r=sRow; r<eRow; r++) {
+                for(let c=sCol; c<eCol; c++) {
+                    if(maze[r][c] === 1) {
+                        ctx.fillStyle = '#111';
+                        ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                        ctx.strokeStyle = '#200'; ctx.lineWidth = 1;
+                        ctx.strokeRect(c*TILE_SIZE+2, r*TILE_SIZE+2, TILE_SIZE-4, TILE_SIZE-4);
+                    } else { ctx.fillStyle = '#050505'; ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE, TILE_SIZE); }
+                }
+            }
+
+            bloodSplats.forEach(s => {
+                ctx.globalAlpha = s.opacity; ctx.fillStyle = s.color;
+                ctx.beginPath(); ctx.arc(s.x*TILE_SIZE, s.y*TILE_SIZE, s.size, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            keys.forEach(k => {
+                if(!k.collected) {
+                    ctx.save(); ctx.translate((k.x+0.5)*TILE_SIZE, (k.y+0.5)*TILE_SIZE); ctx.rotate(Date.now()/500 + k.rot);
+                    ctx.fillStyle = '#700'; ctx.shadowBlur = 12; ctx.shadowColor = '#f00'; ctx.fillRect(-6, -6, 12, 12);
+                    ctx.restore();
+                }
+            });
+
+            weapons.forEach(w => {
+                if(!w.collected) {
+                    ctx.save(); ctx.translate((w.x+0.5)*TILE_SIZE, (w.y+0.5)*TILE_SIZE); ctx.rotate(-Date.now()/400 + w.rot);
+                    ctx.fillStyle = '#088'; ctx.shadowBlur = 18; ctx.shadowColor = '#0ff'; ctx.beginPath();
+                    ctx.moveTo(0, -9); ctx.lineTo(8, 6); ctx.lineTo(-8, 6); ctx.closePath(); ctx.fill();
+                    ctx.restore();
+                }
+            });
+
+            const exitActive = player.keysCollected >= 3;
+            ctx.fillStyle = exitActive ? '#400' : '#111';
+            if (exitActive && Math.random() > 0.65) ctx.fillStyle = '#b00';
+            ctx.fillRect(exit.x*TILE_SIZE+4, exit.y*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8);
+
+            if (player.burstEffect > 0) {
+                ctx.save(); ctx.globalAlpha = player.burstEffect; ctx.strokeStyle = '#0ff'; ctx.lineWidth = 6;
+                ctx.beginPath(); ctx.arc(player.x*TILE_SIZE, player.y*TILE_SIZE, (1 - player.burstEffect) * 450, 0, Math.PI*2);
+                ctx.stroke(); ctx.restore();
+            }
+
+            enemies.forEach(en => {
+                ctx.save(); ctx.translate(en.x*TILE_SIZE, en.y*TILE_SIZE);
+                let p = Math.sin(en.pulse)*8;
+                
+                // Danger indicator for kill zone
+                ctx.beginPath();
+                ctx.arc(0, 0, en.killRadius * TILE_SIZE, 0, Math.PI*2);
+                ctx.strokeStyle = en.isChasing ? `rgba(255, 0, 0, ${0.15 + Math.sin(en.pulse)*0.08})` : 'rgba(100, 0, 0, 0.05)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 52+p);
+                let baseColor = en.isChasing ? '#f00' : '#400';
+                if (en.isStunned > 0) baseColor = '#055';
+                grad.addColorStop(0, baseColor + '6'); grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(0,0, 52+p, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0,0, 18+(en.isChasing?p:0), 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = en.isStunned > 0 ? '#0ff' : (en.isChasing ? '#f00' : '#500');
+                ctx.beginPath(); ctx.arc(-6, -3, 3, 0, Math.PI*2); ctx.arc(6, -3, 3, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            });
+
+            // Player Drawing
+            ctx.save();
+            ctx.translate(player.x*TILE_SIZE, player.y*TILE_SIZE);
+            ctx.strokeStyle = player.exposure > 0 ? '#f00' : (player.isSprinting ? '#0ff' : '#aaa'); 
+            ctx.lineWidth = 3;
+            let b = Math.sin(player.animFrame)*2.5;
+            ctx.beginPath(); ctx.arc(0, -22+b, 6, 0, Math.PI*2); ctx.stroke(); 
+            ctx.beginPath(); ctx.moveTo(0, -16+b); ctx.lineTo(0, 0); ctx.stroke(); 
+            let leg = Math.sin(player.animFrame)*10;
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-leg, 16); ctx.stroke(); 
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(leg, 16); ctx.stroke(); 
+            ctx.restore();
+            ctx.restore();
+
+            // Lighting & Post-FX
+            ctx.save();
+            const px = canvas.width / 2 + sx, py = canvas.height / 2 + sy;
+            const ambientGrad = ctx.createRadialGradient(px, py, 20, px, py, 500);
+            ambientGrad.addColorStop(0, player.burstEffect > 0 ? `rgba(0, 255, 255, ${player.burstEffect * 0.4})` : 'rgba(255, 255, 255, 0.12)');
+            ambientGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = ambientGrad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const dGrad = ctx.createRadialGradient(px, py, 120, px, py, Math.max(canvas.width, canvas.height) * 0.85);
+            let f = 0.98 + (flickerVal * 0.02);
+            dGrad.addColorStop(0, 'rgba(0,0,0,0)');
+            dGrad.addColorStop(0.35, `rgba(0,0,0,${0.08 * f})`);
+            dGrad.addColorStop(0.85, `rgba(0,0,0,${0.94 * f})`);
+            dGrad.addColorStop(1, `rgba(0,0,0,1)`);
+            ctx.fillStyle = dGrad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (player.exposure > 0) {
+                ctx.fillStyle = `rgba(255, 0, 0, ${player.exposure / 20})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update(); draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function endGame(won) {
+            gameActive = false;
+            if (won) { level++; winScreen.classList.remove('hidden'); } 
+            else { deathScreen.classList.remove('hidden'); level = 1; }
+        }
+
+        document.getElementById('start-btn').onclick = initGame;
+        document.getElementById('retry-btn').onclick = initGame;
+        document.getElementById('next-btn').onclick = initGame;
+    </script>
+</body>
+</html>
